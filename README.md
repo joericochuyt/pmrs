@@ -31,7 +31,7 @@ The schedule follows a rotation pattern (default 14 days) and includes emergency
 
 ### Pre-built Binaries
 
-Download the latest pre-built binary for your platform from the [Releases](https://github.com/yourusername/pmrs-scheduler/releases) page.
+Download the latest pre-built binary for your platform from the [Releases](https://github.com/joericochuyt/pmrs-scheduler/releases) page.
 
 ### Running from Source
 
