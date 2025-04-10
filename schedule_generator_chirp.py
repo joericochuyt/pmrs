@@ -6,7 +6,7 @@ import os
 import xml.etree.ElementTree as ET
 import xml.dom.minidom as minidom
 
-def generate_schedule(user1_dob, user2_dob, days=14, output_format="all"):
+def generate_schedule(user1_dob, user2_dob, days=14, start_date=None, output_format="all"):
     """
     Generate a transmission schedule based on dates of birth including PMRS channels,
     frequencies, and CTCSS tones.
@@ -23,6 +23,12 @@ def generate_schedule(user1_dob, user2_dob, days=14, output_format="all"):
     # Parse dates of birth
     user1_date = datetime.datetime.strptime(user1_dob, '%Y-%m-%d')
     user2_date = datetime.datetime.strptime(user2_dob, '%Y-%m-%d')
+    
+    # Use today's date as default start date if none provided
+    if start_date is None:
+        start_date = datetime.datetime.now().date()
+    elif isinstance(start_date, str):
+        start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
     
     # Use DOB values as seeds
     seed_value = user1_date.year + user1_date.month + user1_date.day + user2_date.year + user2_date.month + user2_date.day
