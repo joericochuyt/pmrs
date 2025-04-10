@@ -184,6 +184,8 @@ class PMRSSchedulerApp:
         self.schedule_tree.heading("evening_ctcss", text="CTCSS")
         self.schedule_tree.column("evening_ctcss", width=60, anchor=tk.CENTER)
         
+        self.schedule_tree.tag_configure("current_day", background="#FFFF99")  # Light yellow highlight
+        
         # Pack treeview
         self.schedule_tree.pack(fill=tk.BOTH, expand=True)
         
@@ -293,6 +295,7 @@ class PMRSSchedulerApp:
             
             # Day of week names
             days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            today = datetime.datetime.now().date()
             
             # Populate the regular schedule treeview with date and day of week
             for day in range(1, days + 1):
@@ -301,7 +304,11 @@ class PMRSSchedulerApp:
                 date_str = current_date.strftime("%Y-%m-%d")
                 day_of_week = days_of_week[current_date.weekday()]
                 
-                self.schedule_tree.insert("", tk.END,
+                # Check if this row is today's date
+                is_today = (current_date == today)
+                
+                # Insert the row
+                row_id = self.schedule_tree.insert("", tk.END,
                     values=(
                         day,
                         date_str,
@@ -320,6 +327,12 @@ class PMRSSchedulerApp:
                         f"{self.schedule[day]['evening']['ctcss']:.1f}"
                     )
                 )
+                
+                # Apply the "current_day" tag if this is today
+                if is_today:
+                    self.schedule_tree.item(row_id, tags=("current_day",))
+                    # Optionally scroll to make the current day visible
+                    self.schedule_tree.see(row_id)
             
             # Populate the emergency treeview
             self.emergency_tree.insert("", tk.END,
