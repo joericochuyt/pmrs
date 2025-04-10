@@ -315,7 +315,7 @@ def output_csv_file(schedule, meta):
     
     print(f"CSV schedule saved to emergency_schedule.csv and emergency_quick_connect.csv")
 
-def output_chirp_file(schedule, meta):
+def output_chirp_file(schedule, meta, file_path="emergency_schedule.chirp"):
     """Output the schedule to a CHIRP compatible file"""
     # Create the root element
     root = ET.Element("memories", version="1.0")
@@ -390,10 +390,10 @@ def output_chirp_file(schedule, meta):
     xml_string = ET.tostring(root, encoding='unicode')
     pretty_xml = minidom.parseString(xml_string).toprettyxml(indent="  ")
     
-    with open("emergency_schedule.chirp", "w") as f:
+    with open(file_path, "w") as f:
         f.write(pretty_xml)
     
-    print(f"CHIRP file saved to emergency_schedule.chirp")
+    print(f"CHIRP file saved to {file_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate an emergency transmission schedule based on dates of birth')
