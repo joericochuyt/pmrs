@@ -2,7 +2,8 @@
 
 A cross-platform desktop application for generating **personalized emergency communication schedules** using configurable radio frequency bands. Ideal for coordination when normal infrastructure is unavailable.
 
-![Screenshot](https://github.com/user-attachments/assets/641b123e-ddea-40ab-92d6-b2cdc98d3153)
+![Screenshot](https://github.com/user-attachments/assets/8241e21d-d94d-467c-a5a4-386d501768bc)
+
 
 ---
 
@@ -58,6 +59,10 @@ Using two dates of birth, the tool generates a **predictable yet randomized sche
 ---
 
 ## 🏗️ Building Standalone Executables
+
+### Pre-built Binaries
+
+Download the latest pre-built binary for your platform from the [Releases](https://github.com/joericochuyt/pmrs/releases/tag/pmrs) page.
 
 ### 🪟 Windows
 
