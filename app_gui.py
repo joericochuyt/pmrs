@@ -10,7 +10,7 @@ import schedule_generator_chirp as sgc
 class PMRSSchedulerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("PMRS Emergency Scheduler")
+        self.root.title("Emergency Scheduler")
         self.root.geometry("1200x800")
         self.root.minsize(1000, 700)
         
@@ -196,12 +196,23 @@ class PMRSSchedulerApp:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Title
-        title_label = ttk.Label(main_frame, text="PMRS Emergency Transmission Scheduler", style="Title.TLabel")
+        title_label = ttk.Label(main_frame, text="Emergency Transmission Scheduler", style="Title.TLabel")
         title_label.pack(pady=(0, 20))
         
         # Input Frame
         input_frame = ttk.LabelFrame(main_frame, text="Schedule Parameters", padding=10)
         input_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Input Fields
+        input_grid = ttk.Frame(input_frame)
+        input_grid.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Add frequency band selection
+        ttk.Label(input_grid, text="Frequency Band:").grid(row=1, column=4, sticky=tk.W, padx=5, pady=5)
+        self.freq_band_var = tk.StringVar(value="PMRS")  # Default to PMRS
+        freq_band_combo = ttk.Combobox(input_grid, textvariable=self.freq_band_var, width=10)
+        freq_band_combo['values'] = ("PMRS", "VLF", "VHF", "UHF", "2m Amateur", "70cm Amateur")
+        freq_band_combo.grid(row=1, column=5, sticky=tk.W, padx=5, pady=5)
         
         # Input Fields
         input_grid = ttk.Frame(input_frame)
@@ -230,6 +241,7 @@ class PMRSSchedulerApp:
         ttk.Label(input_grid, text="Days in Rotation:").grid(row=1, column=2, sticky=tk.W, padx=5, pady=5)
         days_entry = ttk.Spinbox(input_grid, from_=1, to=30, textvariable=self.days_var, width=5)
         days_entry.grid(row=1, column=3, sticky=tk.W, padx=5, pady=5)
+        
         
         # Generate Button
         generate_btn = ttk.Button(input_grid, text="Generate Schedule", command=self.generate_schedule)
@@ -394,8 +406,17 @@ class PMRSSchedulerApp:
         info_text.pack(fill=tk.BOTH, expand=True)
         
         # Insert information about the application
-        info_text.insert(tk.END, "PMRS Emergency Transmission Scheduler\n\n", "title")
-        info_text.insert(tk.END, "This application generates personalized transmission schedules for emergency communications using public mobile radio service (PMRS) channels.\n\n")
+        info_text.insert(tk.END, "Emergency Transmission Scheduler\n\n", "title")
+        info_text.insert(tk.END, "This application generates personalized transmission schedules for emergency communications using various frequency bands.\n\n")
+        
+        info_text.insert(tk.END, "Available Frequency Bands:\n\n", "header")
+        info_text.insert(tk.END, "• PMRS (Public Mobile Radio Service): 462-467 MHz - License-free channels for general use\n")
+        info_text.insert(tk.END, "• VLF (Very Low Frequency): 3-6 kHz - Long-range, low-bandwidth communications\n")
+        info_text.insert(tk.END, "• VHF (Very High Frequency): 144-154 MHz - Good for regional communications\n")
+        info_text.insert(tk.END, "• UHF (Ultra High Frequency): 430-440 MHz - Good for urban environments\n")
+        info_text.insert(tk.END, "• 2m Amateur: 144-148 MHz - Amateur radio band (license required)\n")
+        info_text.insert(tk.END, "• 70cm Amateur: 432-438 MHz - Amateur radio band (license required)\n\n")
+    
         
         info_text.insert(tk.END, "How It Works:\n\n", "header")
         info_text.insert(tk.END, "1. Enter the date of birth for two users to generate a unique schedule\n")
@@ -430,7 +451,8 @@ class PMRSSchedulerApp:
             user1_dob = self.user1_dob_entry.get()
             user2_dob = self.user2_dob_entry.get()
             days = self.days_var.get()
-            self.start_date = self.start_date_entry.get_date()  # Store the start date properly
+            self.start_date = self.start_date_entry.get_date()
+            frequency_band = self.freq_band_var.get()  # Get selected frequency band
             
             # Clear existing treeview data
             for item in self.schedule_tree.get_children():
@@ -439,13 +461,14 @@ class PMRSSchedulerApp:
             for item in self.emergency_tree.get_children():
                 self.emergency_tree.delete(item)
             
-            # Generate schedule (only call once)
+            # Generate schedule with frequency band
             self.schedule, self.schedule_meta = sgc.generate_schedule(
                 user1_dob, 
                 user2_dob, 
                 days, 
                 start_date=self.start_date,
-                output_format=None
+                output_format=None,
+                frequency_band=frequency_band  # Pass the selected band
             )
             
             # Update status
