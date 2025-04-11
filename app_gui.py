@@ -35,6 +35,161 @@ class PMRSSchedulerApp:
         # Create the UI
         self.create_ui()
     
+    def load_csv(self):
+        try:
+            # Ask user to select a CSV file
+            file_path = filedialog.askopenfilename(
+                filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
+                title="Open Schedule CSV File"
+            )
+            
+            if not file_path:
+                return  # User canceled
+                
+            # Clear existing treeview data
+            for item in self.schedule_tree.get_children():
+                self.schedule_tree.delete(item)
+            
+            # Read the CSV file
+            with open(file_path, "r", newline='') as csvfile:
+                reader = csv.DictReader(csvfile)
+                
+                # Create a new schedule data structure to store loaded data
+                self.schedule = {}
+                
+                # Get today's date for highlighting
+                today = datetime.datetime.now().date()
+                
+                # Process each row in the CSV
+                for row in reader:
+                    # Parse the day number
+                    day = int(row['Day'])
+                    
+                    # Create the schedule structure
+                    if day not in self.schedule:
+                        self.schedule[day] = {
+                            'morning': {},
+                            'afternoon': {},
+                            'evening': {}
+                        }
+                    
+                    # Parse the date from the CSV
+                    date_str = row['Date']
+                    date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                    
+                    # Fill in the schedule data
+                    self.schedule[day]['morning'] = {
+                        'time': row['Morning Time'],
+                        'channel': int(row['Morning Channel']),
+                        'frequency': row['Morning Frequency'],
+                        'ctcss': float(row['Morning CTCSS'])
+                    }
+                    
+                    self.schedule[day]['afternoon'] = {
+                        'time': row['Afternoon Time'],
+                        'channel': int(row['Afternoon Channel']),
+                        'frequency': row['Afternoon Frequency'],
+                        'ctcss': float(row['Afternoon CTCSS'])
+                    }
+                    
+                    self.schedule[day]['evening'] = {
+                        'time': row['Evening Time'],
+                        'channel': int(row['Evening Channel']),
+                        'frequency': row['Evening Frequency'],
+                        'ctcss': float(row['Evening CTCSS'])
+                    }
+                    
+                    # Insert into treeview
+                    row_id = self.schedule_tree.insert("", tk.END,
+                        values=(
+                            day,
+                            date_str,
+                            row['Day of Week'],
+                            row['Morning Time'],
+                            row['Morning Channel'],
+                            row['Morning Frequency'],
+                            row['Morning CTCSS'],
+                            row['Afternoon Time'],
+                            row['Afternoon Channel'],
+                            row['Afternoon Frequency'],
+                            row['Afternoon CTCSS'],
+                            row['Evening Time'],
+                            row['Evening Channel'],
+                            row['Evening Frequency'],
+                            row['Evening CTCSS']
+                        )
+                    )
+                    
+                    # Apply highlighting for today's date
+                    if date_obj == today:
+                        self.schedule_tree.item(row_id, tags=("current_day",))
+                        self.schedule_tree.see(row_id)
+                        
+                # Try to load emergency CSV if it exists
+                emergency_file_path = os.path.splitext(file_path)[0] + "_emergency.csv"
+                if os.path.exists(emergency_file_path):
+                    # Clear existing emergency treeview data
+                    for item in self.emergency_tree.get_children():
+                        self.emergency_tree.delete(item)
+                        
+                    # Read the emergency CSV file
+                    with open(emergency_file_path, "r", newline='') as emergency_csvfile:
+                        emergency_reader = csv.DictReader(emergency_csvfile)
+                        
+                        # Create schedule_meta if it doesn't exist
+                        if not hasattr(self, 'schedule_meta') or self.schedule_meta is None:
+                            self.schedule_meta = {
+                                'quick_connect_times': [],
+                                'cycle_days': len(self.schedule)
+                            }
+                        
+                        # Process each row in the emergency CSV
+                        for row in emergency_reader:
+                            # Insert into emergency treeview
+                            self.emergency_tree.insert("", tk.END,
+                                values=(
+                                    row['Type'],
+                                    row['Time'],
+                                    row['Channel'],
+                                    row['Frequency'],
+                                    row['CTCSS'],
+                                    row['Notes']
+                                )
+                            )
+                            
+                            # Store quick connect info
+                            if 'Quick Connect' in row['Type']:
+                                while len(self.schedule_meta['quick_connect_times']) < 2:
+                                    self.schedule_meta['quick_connect_times'].append({})
+                                
+                                # Get quick connect index (1 or 2)
+                                idx = int(row['Type'].split(' ')[-1]) - 1
+                                
+                                self.schedule_meta['quick_connect_times'][idx] = {
+                                    'time': row['Time'],
+                                    'channel': int(row['Channel']),
+                                    'frequency': row['Frequency'],
+                                    'ctcss': float(row['CTCSS'])
+                                }
+                
+                # Set start date based on first row
+                first_date_str = next(iter(self.schedule.values()))['morning'].get('date', None)
+                if first_date_str:
+                    self.start_date = datetime.datetime.strptime(first_date_str, "%Y-%m-%d").date()
+                
+                self.status_var.set(f"Schedule loaded from {file_path}")
+                messagebox.showinfo("Success", f"Schedule loaded from {file_path}")
+                
+                # Switch to the schedule tab
+                self.notebook.select(0)
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load CSV file: {str(e)}")
+            self.status_var.set("Error loading CSV file.")
+            # Print stack trace for debugging
+            import traceback
+            traceback.print_exc()
+    
     def create_ui(self):
         # Main frame
         main_frame = ttk.Frame(self.root, padding=10)
@@ -88,6 +243,9 @@ class PMRSSchedulerApp:
         ttk.Button(export_frame, text="Export to CHIRP", command=self.export_chirp).pack(side=tk.LEFT, padx=5)
         ttk.Button(export_frame, text="Export to CSV", command=self.export_csv).pack(side=tk.LEFT, padx=5)
         ttk.Button(export_frame, text="Export to TXT", command=self.export_txt).pack(side=tk.LEFT, padx=5)
+        
+        # Add Load CSV button
+        ttk.Button(export_frame, text="Load CSV", command=self.load_csv).pack(side=tk.LEFT, padx=5)
         
         # Results Notebook
         self.notebook = ttk.Notebook(main_frame)
@@ -383,6 +541,11 @@ class PMRSSchedulerApp:
     def export_chirp(self):
         if not self.schedule:
             messagebox.showwarning("Warning", "No schedule has been generated yet.")
+            return
+        
+        # Ensure we have all necessary data for CHIRP export
+        if not hasattr(self, 'schedule_meta') or not self.schedule_meta:
+            messagebox.showwarning("Warning", "Missing metadata required for CHIRP export. Please regenerate the schedule.")
             return
         
         try:
