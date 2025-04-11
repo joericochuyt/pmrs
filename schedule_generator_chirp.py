@@ -1,62 +1,166 @@
 import datetime
 import random
 import argparse
+import hashlib
+import numpy as np
 import csv
 import os
 import xml.etree.ElementTree as ET
 import xml.dom.minidom as minidom
 
-def generate_schedule(user1_dob, user2_dob, days=14, start_date=None, output_format="all"):
+# Define frequency ranges for different bands
+FREQUENCY_BANDS = {
+    "PMRS": {
+        "channels": range(1, 31),  # 1-30 channels
+        "frequencies": [f"462.{5625+i*0.025:.4f}" for i in range(8)] + 
+                       [f"467.{5625+i*0.025:.4f}" for i in range(8)] +
+                       [f"462.{6625+i*0.025:.4f}" for i in range(7)] +
+                       [f"467.{6625+i*0.025:.4f}" for i in range(7)],
+        "ctcss_tones": [67.0, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8, 
+                        97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3, 
+                        131.8, 136.5, 141.3, 146.2, 151.4, 156.7, 162.2, 167.9, 173.8, 
+                        179.9, 186.2, 192.8, 203.5]
+    },
+    "VLF": {
+        "channels": range(1, 11),  # 1-10 channels
+        "frequencies": [f"{3.0+i*0.3:.1f}" for i in range(10)],  # 3.0-5.7 kHz
+        "ctcss_tones": [67.0, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8]
+    },
+    "VHF": {
+        "channels": range(1, 21),  # 1-20 channels
+        "frequencies": [f"{144.0+i*0.5:.3f}" for i in range(20)],  # 144-153.5 MHz
+        "ctcss_tones": [67.0, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8, 
+                        97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3, 131.8]
+    },
+    "UHF": {
+        "channels": range(1, 21),  # 1-20 channels
+        "frequencies": [f"{430.0+i*0.5:.3f}" for i in range(20)],  # 430-439.5 MHz
+        "ctcss_tones": [67.0, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8,
+                        97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3, 131.8]
+    },
+    "2m Amateur": {
+        "channels": range(1, 21),  # 1-20 channels
+        "frequencies": [f"{144.1+i*0.25:.3f}" for i in range(20)],  # Amateur 2m band
+        "ctcss_tones": [67.0, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8,
+                        97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3, 131.8]
+    },
+    "70cm Amateur": {
+        "channels": range(1, 21),  # 1-20 channels
+        "frequencies": [f"{432.1+i*0.25:.3f}" for i in range(20)],  # Amateur 70cm band
+        "ctcss_tones": [67.0, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8,
+                        97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3, 131.8]
+    }
+}
+
+
+def generate_schedule(user1_dob, user2_dob, days, start_date=None, output_format=None, frequency_band="PMRS"):
     """
-    Generate a transmission schedule based on dates of birth including PMRS channels,
-    frequencies, and CTCSS tones.
+    Generate a communication schedule based on user inputs.
     
     Parameters:
-    user1_dob (str): First user's date of birth in format 'YYYY-MM-DD'
-    user2_dob (str): Second user's date of birth in format 'YYYY-MM-DD'
-    days (int): Number of days in the rotation cycle
-    output_format (str): Output format - 'text', 'csv', 'chirp', or 'all'
+    - user1_dob: Date of birth for User 1 in the format YYYY-MM-DD
+    - user2_dob: Date of birth for User 2 in the format YYYY-MM-DD
+    - days: Number of days in the rotation cycle
+    - start_date: Starting date for the schedule (datetime.date object)
+    - output_format: Format for output (None, 'txt', 'csv', or 'chirp')
+    - frequency_band: Frequency band to use ("PMRS", "VLF", "VHF", "UHF", etc.)
     
     Returns:
-    dict: A schedule with transmission times, channels, frequencies and CTCSS tones for each day
+    - schedule: Dictionary containing the schedule
+    - meta: Dictionary containing metadata
     """
-    # Parse dates of birth
-    user1_date = datetime.datetime.strptime(user1_dob, '%Y-%m-%d')
-    user2_date = datetime.datetime.strptime(user2_dob, '%Y-%m-%d')
     
-    # Use today's date as default start date if none provided
+    # Get the selected frequency band configuration
+    if frequency_band not in FREQUENCY_BANDS:
+        raise ValueError(f"Unsupported frequency band: {frequency_band}")
+        
+    band_config = FREQUENCY_BANDS[frequency_band]
+    
+    # Get channels, frequencies, and CTCSS tones from the band configuration
+    channels = list(band_config["channels"])
+    frequencies = band_config["frequencies"]
+    ctcss_tones = band_config["ctcss_tones"]
+    
+    # Convert DOBs to datetime objects
+    try:
+        u1_dob = datetime.datetime.strptime(user1_dob, "%Y-%m-%d")
+        u2_dob = datetime.datetime.strptime(user2_dob, "%Y-%m-%d")
+    except ValueError as e:
+        raise ValueError(f"Invalid date format: {str(e)}")
+    
+    # Set start_date if not provided
     if start_date is None:
-        start_date = datetime.datetime.now().date()
-    elif isinstance(start_date, str):
-        start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
+        start_date = datetime.date.today()
     
-    # Use DOB values as seeds
-    seed_value = user1_date.year + user1_date.month + user1_date.day + user2_date.year + user2_date.month + user2_date.day
+    # Calculate hash values from user DOBs
+    hash_u1 = int(hashlib.sha256(u1_dob.strftime("%Y%m%d").encode()).hexdigest(), 16)
+    hash_u2 = int(hashlib.sha256(u2_dob.strftime("%Y%m%d").encode()).hexdigest(), 16)
+    
+    # Use hash values to seed random generators
+    seed_value = (hash_u1 + hash_u2) % (2**32 - 1)
     random.seed(seed_value)
-    
-    # Define time ranges
-    morning_start, morning_end = 6, 10    # 6:00 AM to 10:00 AM
-    afternoon_start, afternoon_end = 12, 16  # 12:00 PM to 4:00 PM
-    evening_start, evening_end = 19, 23   # 7:00 PM to 11:00 PM
-    
-    # Define PMRS channels and their frequencies (MHz)
-    pmrs_channels = {
-        1: "462.5625", 2: "462.5875", 3: "462.6125", 4: "462.6375", 5: "462.6625", 
-        6: "462.6875", 7: "462.7125", 8: "467.5625", 9: "467.5875", 10: "467.6125",
-        11: "467.6375", 12: "467.6625", 13: "467.6875", 14: "467.7125", 15: "462.5500",
-        16: "462.5750", 17: "462.6000", 18: "462.6250", 19: "462.6500", 20: "462.6750",
-        21: "462.7000", 22: "462.7250"
-    }
-    
-    # Define CTCSS tones (Hz)
-    ctcss_tones = [
-        67.0, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8,
-        97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3,
-        131.8, 136.5, 141.3, 146.2, 151.4, 156.7, 162.2, 167.9, 173.8,
-        179.9, 186.2, 192.8, 203.5, 210.7, 218.1, 225.7, 233.6, 241.8, 250.3
-    ]
+    np.random.seed(seed_value)
     
     schedule = {}
+    
+    # Generate a list of dates starting from start_date
+    dates = [start_date + datetime.timedelta(days=i) for i in range(days)]
+    
+    # Determine channel selection for each time period
+    # Instead of hardcoding channel ranges like (1, 31), use the range from band_config
+    channel_selection = random.sample(channels, min(len(channels), days * 3))
+    
+    # If we need more channels than are available, repeat with different offsets
+    if days * 3 > len(channels):
+        additional_needed = days * 3 - len(channels)
+        additional_channels = []
+        
+        for i in range(additional_needed):
+            # Pick from available channels again with a different seed
+            seed_value = (hash_u1 + hash_u2 + i) % (2**32 - 1)
+            random.seed(seed_value)
+            additional_channels.append(random.choice(channels))
+        
+        channel_selection.extend(additional_channels)
+    
+    # Shuffle to ensure variety
+    random.shuffle(channel_selection)
+    
+    # Reset seed
+    random.seed(hash_u1 + hash_u2)
+    
+    # Determine CTCSS tone selection for each time period
+    # Use the CTCSS tones from band_config instead of hardcoded list
+    ctcss_selection = []
+    for _ in range(days * 3):
+        ctcss_selection.append(random.choice(ctcss_tones))
+    
+    # Create a consistent mapping between channels and frequencies based on user hashes
+    channel_to_freq = {}
+    
+    # Use the frequencies from band_config instead of hardcoded list
+    freq_pool = frequencies.copy()
+    random.shuffle(freq_pool)
+    
+    for ch in channels:
+        if freq_pool:
+            channel_to_freq[ch] = freq_pool.pop(0)
+        else:
+            # If we run out of frequencies, start reusing them with an offset
+            random.seed(hash_u1 + hash_u2 + ch)
+            channel_to_freq[ch] = random.choice(frequencies)
+    
+    morning_start = 7
+    morning_end = 10
+    afternoon_start = 12
+    afternoon_end = 15
+    evening_start = 18
+    evening_end = 21
+
+    # Generate initial times
+    morning_time = f"{random.randint(morning_start, morning_end-1)}:{random.choice(['00', '15', '30', '45'])}"
+    afternoon_time = f"{random.randint(afternoon_start, afternoon_end-1)}:{random.choice(['00', '15', '30', '45'])}"
+    evening_time = f"{random.randint(evening_start, evening_end-1)}:{random.choice(['00', '15', '30', '45'])}"
     
     # Keep track of used hours to avoid repetition
     used_morning_hours = set()
@@ -103,20 +207,20 @@ def generate_schedule(user1_dob, user2_dob, days=14, start_date=None, output_for
         
         # Generate channels for each time window
         # Avoid repeating recent channels
-        available_channels = [ch for ch in range(1, 23) if ch not in recent_channels[-3:]] if recent_channels else list(range(1, 23))
+        available_channels = [ch for ch in channels if ch not in recent_channels[-3:]] if recent_channels else list(channels)
         
         morning_channel = random.choice(available_channels)
         recent_channels.append(morning_channel)
         if len(recent_channels) > 10:
             recent_channels.pop(0)
             
-        available_channels = [ch for ch in range(1, 23) if ch not in recent_channels[-3:]]
+        available_channels = [ch for ch in channels if ch not in recent_channels[-3:]]
         afternoon_channel = random.choice(available_channels)
         recent_channels.append(afternoon_channel)
         if len(recent_channels) > 10:
             recent_channels.pop(0)
             
-        available_channels = [ch for ch in range(1, 23) if ch not in recent_channels[-3:]]
+        available_channels = [ch for ch in channels if ch not in recent_channels[-3:]]
         evening_channel = random.choice(available_channels)
         recent_channels.append(evening_channel)
         if len(recent_channels) > 10:
@@ -147,42 +251,42 @@ def generate_schedule(user1_dob, user2_dob, days=14, start_date=None, output_for
             "morning": {
                 "time": f"{morning_time} - {morning_hour:02d}:{morning_minute+5:02d}",
                 "channel": morning_channel,
-                "frequency": pmrs_channels[morning_channel],
+                "frequency": channel_to_freq[morning_channel],
                 "ctcss": morning_tone
             },
             "afternoon": {
                 "time": f"{afternoon_time} - {afternoon_hour:02d}:{afternoon_minute+5:02d}",
                 "channel": afternoon_channel,
-                "frequency": pmrs_channels[afternoon_channel],
+                "frequency": channel_to_freq[afternoon_channel],
                 "ctcss": afternoon_tone
             },
             "evening": {
                 "time": f"{evening_time} - {evening_hour:02d}:{evening_minute+5:02d}",
                 "channel": evening_channel,
-                "frequency": pmrs_channels[evening_channel],
+                "frequency": channel_to_freq[evening_channel],
                 "ctcss": evening_tone
             }
         }
     
     # Generate emergency quick-connect times and channels based on the combined DOB
-    quick_connect_1 = (user1_date.day + user2_date.day) % 60
-    quick_connect_2 = (user1_date.month + user2_date.month) % 60
+    quick_connect_1 = (u1_dob.day + u2_dob.day) % 60
+    quick_connect_2 = (u1_dob.month + u2_dob.month) % 60
     
     # Ensure they're at least 15 minutes apart
     while abs(quick_connect_1 - quick_connect_2) < 15:
         quick_connect_2 = (quick_connect_2 + 7) % 60
     
     # Generate emergency channels
-    emergency_channel_1 = ((user1_date.day + user2_date.month) % 22) + 1
-    emergency_channel_2 = ((user1_date.month + user2_date.day) % 22) + 1
+    emergency_channel_1 = ((u1_dob.day + u2_dob.month) % len(channels)) + 1
+    emergency_channel_2 = ((u1_dob.month + u2_dob.day) % len(channels)) + 1
     
     # Ensure different emergency channels
     if emergency_channel_1 == emergency_channel_2:
         emergency_channel_2 = emergency_channel_2 % 22 + 1
     
     # Generate emergency CTCSS tones
-    emergency_tone_1 = ctcss_tones[((user1_date.day + user2_date.year) % len(ctcss_tones))]
-    emergency_tone_2 = ctcss_tones[((user1_date.year + user2_date.day) % len(ctcss_tones))]
+    emergency_tone_1 = ctcss_tones[((u1_dob.day + u2_dob.year) % len(ctcss_tones))]
+    emergency_tone_2 = ctcss_tones[((u1_dob.year + u2_dob.day) % len(ctcss_tones))]
     
     # Add schedule metadata
     schedule_meta = {
@@ -190,13 +294,13 @@ def generate_schedule(user1_dob, user2_dob, days=14, start_date=None, output_for
             {
                 "time": f"XX:{quick_connect_1:02d}",
                 "channel": emergency_channel_1,
-                "frequency": pmrs_channels[emergency_channel_1],
+                "frequency": channel_to_freq[emergency_channel_1],
                 "ctcss": emergency_tone_1
             },
             {
                 "time": f"XX:{quick_connect_2:02d}",
                 "channel": emergency_channel_2,
-                "frequency": pmrs_channels[emergency_channel_2],
+                "frequency": channel_to_freq[emergency_channel_2],
                 "ctcss": emergency_tone_2
             }
         ],
